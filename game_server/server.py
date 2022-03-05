@@ -1,7 +1,7 @@
+from time import sleep
 from rich import print
 from rich.table import Table
 
-from os import environ
 from socket import create_server, socket
 
 from champlistloader import load_some_champs
@@ -15,7 +15,7 @@ class GameServer:
         self._connections = {}
 
     def start(self):
-        self._join_sock = create_server((self._address, self._port), reuse_port=True)
+        self._join_sock = create_server((self._address, self._port))
 
         self._accept()
     
@@ -28,11 +28,9 @@ class GameServer:
 
     def _accept(self):
 
-        conn, _ = self._join_sock.accept()
-        self._join(conn)
-
-        conn, _ = self._join_sock.accept()
-        self._join(conn)
+        for _ in range(2):
+            conn, _ = self._join_sock.accept()
+            self._join(conn)
 
         self._main()
 
@@ -63,30 +61,22 @@ class GameServer:
                     sock.sendall(f'{name} is in the enemy team. Try again.'.encode())
                 case _:
                     player1.append(name)
-                    sock.sendall('True'.encode())
                     for user in self._connections:
                         self._connections[user].sendall(f'{prompt} chose {name}!'.encode())
                     break
 
-    def print_available_champs(champions: dict[Champion]) -> None:
-
-        # Create a table containing available champions
-        available_champs = Table(title='Available champions')
-
-        # Add the columns Name, probability of rock, probability of paper and
-        # probability of scissors
-        available_champs.add_column("Name", style="cyan", no_wrap=True)
-        available_champs.add_column("prob(:raised_fist-emoji:)", justify="center")
-        available_champs.add_column("prob(:raised_hand-emoji:)", justify="center")
-        available_champs.add_column("prob(:victory_hand-emoji:)", justify="center")
-
+    def send_available_champs(self, champions: dict[Champion]) -> None:
         # Populate the table
         for champion in champions.values():
-            available_champs.add_row(*champion.str_tuple)
+            for user in self._connections:
+                self._connections[user].sendall(f'{champion}'.encode())
+        
+        for user in self._connections:
+            self._connections[user].sendall('done'.encode())
+        
+        
 
-        print(available_champs)
-
-    def print_match_summary(match: Match) -> None:
+    def print_match_summary(self, match: Match) -> None:
 
         EMOJI = {
             Shape.ROCK: ':raised_fist-emoji:',
@@ -138,7 +128,9 @@ class GameServer:
 
         champions = load_some_champs()
 
-        self.print_available_champs(champions)
+        sleep (1)
+
+        self.send_available_champs(champions)
 
         ## send champions to clients
 
@@ -149,6 +141,10 @@ class GameServer:
         for _ in range(2):
             self.input_champion(f'[red]{players[0]}', self._connections[players[0]], champions, player1, player2)
             self.input_champion(f'[blue]{players[1]}', self._connections[players[1]], champions, player2, player1)
+
+        sleep(1)
+        for user in self._connections:
+            self._connections[user].sendall('done'.encode())
 
         # Match
         match = Match(
@@ -165,7 +161,7 @@ class GameServer:
 
 
 if __name__ == "__main__":
-    host = '0.0.0.0'
+    host = 'localhost'
     port = 5555
     server = GameServer(host, port)
     server.start()
