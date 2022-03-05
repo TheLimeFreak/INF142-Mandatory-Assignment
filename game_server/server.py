@@ -1,29 +1,23 @@
 from rich import print
-from rich.prompt import Prompt
 from rich.table import Table
 
 from os import environ
-from socket import create_server, socket, timeout
-
-from threading import Thread, Lock
+from socket import create_server, socket
 
 from champlistloader import load_some_champs
 from core import Champion, Match, Shape, Team
 
 class GameServer:
-    def __init__(self, address: str, buffer_size: int = 2048) -> None:
+    def __init__(self, address: str, port: int, buffer_size: int = 2048) -> None:
         self._address = address
-        self._port = 5555
+        self._port = port
         self._buffer_size = buffer_size
         self._connections = {}
-        self._connections_lock = Lock()
 
     def start(self):
         self._join_sock = create_server((self._address, self._port), reuse_port=True)
-        self._join_sock.settimeout(5)
-        self._open = True
-        
-        Thread(target=self._accept).start()
+
+        self._accept()
     
     def shut_down(self):
         print("Stopping the server")
@@ -33,26 +27,21 @@ class GameServer:
         quit()
 
     def _accept(self):
-        while self._open:
-            try:
-                conn, _ = self._join_sock.accept
-            except timeout:
-                pass
-            else:
-                Thread(target=self._join, args=(conn,)).start()
+
+        conn, _ = self._join_sock.accept()
+        self._join(conn)
+
+        conn, _ = self._join_sock.accept()
+        self._join(conn)
 
         self._main()
 
     def _join(self, conn):
-        if data := conn.recv(self._buffer_size):
-            user = data.decode()
-            print(f"{user} joined the game!")
-            conn.sendall("Joined game".encode())
-            
-            with self._connections_lock:
-                self._connections[user] = conn
-                if len(self._connections) == 2:
-                    self._open = False
+        data = conn.recv(self._buffer_size)
+        user = data.decode()
+        print(f"{user} joined the game!")
+        conn.sendall("Joined game".encode())
+        self._connections[user] = conn
     
     def input_champion(self,
                        prompt: str,
@@ -176,6 +165,7 @@ class GameServer:
 
 
 if __name__ == "__main__":
-    address = environ.get("HOST", "localhost")
-    server = GameServer(address)
+    host = '0.0.0.0'
+    port = 5555
+    server = GameServer(host, port)
     server.start()

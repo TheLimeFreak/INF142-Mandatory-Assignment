@@ -2,7 +2,6 @@ from rich import print
 from rich.prompt import Prompt
 from rich.table import Table
 
-from os import environ
 from socket import create_connection, timeout
 
 class GameClient:
@@ -16,7 +15,8 @@ class GameClient:
             self._main()
 
     def _register(self) -> bool:
-        while user := input("Username: "):
+        user = Prompt.ask('Username: ')
+        while user:
             self._sock = create_connection((self._server, self._port), timeout=5)
             self._sock.sendall(user.encode())
             response = self._sock.recv(self._buffer_size).decode()
@@ -60,6 +60,6 @@ class GameClient:
 
 
 if __name__ == '__main__':
-    server = environ.get("SERVER", "localhost")
+    server = '0.0.0.0'
     client = GameClient(server)
     client.start()
