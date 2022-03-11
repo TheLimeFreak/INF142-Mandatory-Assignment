@@ -1,4 +1,3 @@
-from urllib import response
 from rich import print
 from rich.prompt import Prompt
 from rich.table import Table
@@ -16,7 +15,7 @@ class GameClient:
             self._main()
 
     def _register(self) -> bool:
-        user = Prompt.ask('Username: ')
+        user = Prompt.ask('Username')
         while user:
             self._sock = create_connection((self._server, self._port))
             self._sock.sendall(user.encode())
@@ -45,12 +44,47 @@ class GameClient:
             else:
                 a, b, c, d = response.split(sep='|')
                 available_champs.add_row(a, b, c, d)
+                self._sock.sendall('ok'.encode())
 
     def input_champion(self):
         while True:
             response = self._sock.recv(self._buffer_size).decode()
             if response == 'Choose champion: ':
                 self._sock.sendall(Prompt.ask(f'{response}').encode())
+            elif response == 'done':
+                break
+            else:
+                print(response)
+    
+    def print_match_summary(self):
+        while True:
+            response = self._sock.recv(self._buffer_size).decode()
+            self._sock.sendall('ok'.encode())
+            if response == 'table':
+                # Create a table containing the results of the round
+                round_summary = Table(title=self._sock.recv(self._buffer_size).decode())
+                # Add columns for each team
+                round_summary.add_column("Red",
+                                        style="red",
+                                        no_wrap=True)
+                round_summary.add_column("Blue",
+                                        style="blue",
+                                        no_wrap=True)
+                
+                self._sock.sendall('ok'.encode())
+                # Populate the table
+                while True:
+                    table_response = self._sock.recv(self._buffer_size).decode()
+                    if table_response == 'done':
+                        self._sock.sendall('ok'.encode())
+                        break
+                    else:
+                        self._sock.sendall('ok'.encode())
+                        round_summary.add_row(response,self._sock.recv(self._buffer_size).decode())
+                        self._sock.sendall('ok'.encode())
+                print(round_summary)
+                print('\n')
+
             elif response == 'done':
                 break
             else:
@@ -73,10 +107,9 @@ class GameClient:
 
         print('\n')
 
+        self.print_match_summary()
 
         self._sock.close()
-
-
 
 if __name__ == '__main__':
     server = 'localhost'

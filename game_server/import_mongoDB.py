@@ -1,10 +1,12 @@
 import pymongo
+import os
+
+from champlistloader import load_some_champs
 from pymongo import MongoClient
 from dotenv import load_dotenv
 load_dotenv()
-import os
 
-print(pymongo.version)
+print(f'PyMongo version: {pymongo.version}')
 
 # Get you password from .env file
 username = os.environ.get("USER")
@@ -18,17 +20,15 @@ client = MongoClient('mongodb+srv://' + username + ':' + password + '@' + cluste
 database = client.INF142
 
 # Create a new collection in you database
-person = database.person
+champdb = database.champion
 
-personDocument = {
-  "firstname": "Ola",
-  "lastname": "Nordmann",
-  "course": "INF142"
-}
-
-person.insert_one(personDocument)
-
-
-
-
-
+champions = load_some_champs()
+for champion in champions.values():
+  name, rock, paper, scissors = champion.str_tuple
+  championDocument = {
+    "name": name,
+    "rock": float(rock),
+    "paper": float(paper),
+    "scissors": float(scissors)
+  }
+  champdb.insert_one(championDocument)

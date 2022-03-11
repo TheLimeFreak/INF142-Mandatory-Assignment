@@ -1,10 +1,12 @@
-from time import sleep
-from rich import print
-from rich.table import Table
+from typing import Collection
+import pymongo
+import os
 
+from pymongo import MongoClient
+from time import sleep
+from dotenv import load_dotenv
 from socket import create_server, socket
 
-from champlistloader import load_some_champs
 from core import Champion, Match, Shape, Team
 
 class GameServer:
@@ -14,20 +16,47 @@ class GameServer:
         self._buffer_size = buffer_size
         self._connections = {}
 
+    def connect_db(self) -> Collection:
+        print(f'PyMongo version: {pymongo.version}')
+        print('\nConnecting to MongoDB...\n')
+
+        load_dotenv()
+
+        username = os.environ.get("USER")
+        password = os.environ.get("PASS")
+        clusterName = "inf142-mandatory-assign"
+
+        # Connect to you cluster
+        client = MongoClient('mongodb+srv://' + username + ':' + password + '@' + clusterName + '.awcxl.mongodb.net/demo-db?retryWrites=true&w=majority')
+
+        database = client.INF142
+        return database.champion
+
     def start(self):
+        print('\n\n\n')
+        print('Loading champions...\n')
+        self.champions = self.load_champ_db()
+
+        print('\n\nStarting server...\n')
         self._join_sock = create_server((self._address, self._port))
 
         self._accept()
     
     def shut_down(self):
         print("Stopping the server")
+
+        for user in self._connections:
+            self._connections[user].sendall('stopping server'.encode())
+
+        sleep(3)
+
         for user in self._connections:
             self._connections[user].close()
         self._connections = {}
         quit()
 
     def _accept(self):
-
+        print('Rady for connections')
         for _ in range(2):
             conn, _ = self._join_sock.accept()
             self._join(conn)
@@ -66,17 +95,20 @@ class GameServer:
                     break
 
     def send_available_champs(self, champions: dict[Champion]) -> None:
-        # Populate the table
+        
+        print('\n\nSending available champions...\n')
+
         for champion in champions.values():
             for user in self._connections:
                 self._connections[user].sendall(f'{champion}'.encode())
+                _ = self._connections[user].recv(self._buffer_size)
         
         for user in self._connections:
             self._connections[user].sendall('done'.encode())
         
         
 
-    def print_match_summary(self, match: Match) -> None:
+    def send_match_summary(self, match: Match) -> None:
 
         EMOJI = {
             Shape.ROCK: ':raised_fist-emoji:',
@@ -84,40 +116,56 @@ class GameServer:
             Shape.SCISSORS: ':victory_hand-emoji:'
         }
 
-        # For each round print a table with the results
+
+        # For each round send a table with the results
         for index, round in enumerate(match.rounds):
+            print(f'Sending round {index}')
+            for user in self._connections:
+                self._connections[user].sendall('table'.encode())
+                _ = self._connections[user].recv(self._buffer_size)
+                self._connections[user].sendall(f'Round {index+1}'.encode())
+                _ = self._connections[user].recv(self._buffer_size)
 
-            # Create a table containing the results of the round
-            round_summary = Table(title=f'Round {index+1}')
+                # Send the table
+                for key in round:
+                    red, blue = key.split(', ')
+                    self._connections[user].sendall(f'{red} {EMOJI[round[key].red]}'.encode())
+                    _ = self._connections[user].recv(self._buffer_size)
+                    self._connections[user].sendall(f'{blue} {EMOJI[round[key].blue]}'.encode())
+                    _ = self._connections[user].recv(self._buffer_size)
+                
+                self._connections[user].sendall('done'.encode())
+                _ = self._connections[user].recv(self._buffer_size)
+                sleep(1)
 
-            # Add columns for each team
-            round_summary.add_column("Red",
-                                    style="red",
-                                    no_wrap=True)
-            round_summary.add_column("Blue",
-                                    style="blue",
-                                    no_wrap=True)
+        for user in self._connections:
+            # Send the score
+            red_score, blue_score = match.score
+            self._connections[user].sendall(f'Red: {red_score}\nBlue: {blue_score}'.encode())
 
-            # Populate the table
-            for key in round:
-                red, blue = key.split(', ')
-                round_summary.add_row(f'{red} {EMOJI[round[key].red]}',
-                                    f'{blue} {EMOJI[round[key].blue]}')
-            print(round_summary)
-            print('\n')
+            # Send the winner
+            if red_score > blue_score:
+                self._connections[user].sendall('\n[red]Red victory! :grin:'.encode())
+            elif red_score < blue_score:
+                self._connections[user].sendall('\n[blue]Blue victory! :grin:'.encode())
+            else:
+                self._connections[user].sendall('\nDraw :expressionless:'.encode())
 
-        # Print the score
-        red_score, blue_score = match.score
-        print(f'Red: {red_score}\n'
-            f'Blue: {blue_score}')
+            _ = self._connections[user].recv(self._buffer_size)
+            sleep(1)
+            self._connections[user].sendall('done'.encode())
+            _ = self._connections[user].recv(self._buffer_size)
 
-        # Print the winner
-        if red_score > blue_score:
-            print('\n[red]Red victory! :grin:')
-        elif red_score < blue_score:
-            print('\n[blue]Blue victory! :grin:')
-        else:
-            print('\nDraw :expressionless:')
+    def load_champ_db(self) -> dict[str, Champion]:
+        collection = self.connect_db()
+        
+        champions = {}
+        for champion in collection.find():
+            champ = Champion(champion['name'], champion['rock'], champion['paper'], champion['scissors'])
+            champions[champ.name] = champ
+            print(f'Loaded: {champ.name}')
+        return champions
+
 
     def _main(self):
 
@@ -126,35 +174,38 @@ class GameServer:
         for user in self._connections:
             players.append(user)
 
-        champions = load_some_champs()
-
-        sleep (1)
-
-        self.send_available_champs(champions)
+        sleep (3)
 
         ## send champions to clients
+        self.send_available_champs(self.champions)
 
         player1 = []
         player2 = []
 
         # Champion selection
         for _ in range(2):
-            self.input_champion(f'[red]{players[0]}', self._connections[players[0]], champions, player1, player2)
-            self.input_champion(f'[blue]{players[1]}', self._connections[players[1]], champions, player2, player1)
+            self.input_champion(f'[red]{players[0]}', self._connections[players[0]], self.champions, player1, player2)
+            self.input_champion(f'[blue]{players[1]}', self._connections[players[1]], self.champions, player2, player1)
 
-        sleep(1)
+        sleep(3)
+
         for user in self._connections:
             self._connections[user].sendall('done'.encode())
 
+        print('\nPlaying match...\n')
+        for user in self._connections:
+            self._connections[user].sendall('\nPlaying match...\n'.encode())
+            _ = self._connections[user].recv(self._buffer_size)
+
         # Match
         match = Match(
-            Team([champions[name] for name in player1]),
-            Team([champions[name] for name in player2])
+            Team([self.champions[name] for name in player1]),
+            Team([self.champions[name] for name in player2])
         )
         match.play()
 
-        # Print a summary
-        self.print_match_summary(match)
+        # Send a summary
+        self.send_match_summary(match)
 
         print("Game concluded...")
         self.shut_down
