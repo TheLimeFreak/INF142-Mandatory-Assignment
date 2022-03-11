@@ -18,7 +18,7 @@ class GameServer:
 
     def connect_db(self) -> Collection:
         print(f'PyMongo version: {pymongo.version}')
-        print('\nConnecting to MongoDB...\n')
+        print('Connecting to MongoDB...')
 
         load_dotenv()
 
@@ -33,11 +33,10 @@ class GameServer:
         return database.champion
 
     def start(self):
-        print('\n\n\n')
-        print('Loading champions...\n')
+        print('Loading champions...')
         self.champions = self.load_champ_db()
 
-        print('\n\nStarting server...\n')
+        print('Starting server...')
         self._join_sock = create_server((self._address, self._port))
 
         self._accept()
@@ -96,7 +95,7 @@ class GameServer:
 
     def send_available_champs(self, champions: dict[Champion]) -> None:
         
-        print('\n\nSending available champions...\n')
+        print('Sending available champions...')
 
         for champion in champions.values():
             for user in self._connections:
@@ -192,7 +191,7 @@ class GameServer:
         for user in self._connections:
             self._connections[user].sendall('done'.encode())
 
-        print('\nPlaying match...\n')
+        print('Playing match...')
         for user in self._connections:
             self._connections[user].sendall('\nPlaying match...\n'.encode())
             _ = self._connections[user].recv(self._buffer_size)

@@ -1,8 +1,0 @@
-services:
-  server:
-    build: ./game_server
-
-  client:
-    build: ./game_client
-    stdin_open: true
-    tty: true
